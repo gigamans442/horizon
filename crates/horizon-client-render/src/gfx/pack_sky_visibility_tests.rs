@@ -344,15 +344,37 @@ fn pack_visibility_native_fallback_preserves_end_flashes_and_native_sun_ownershi
             ..Default::default()
         };
         for own_sun in [false, true] {
-            let expected: Vec<_> = match (mask, own_sun) {
-                (1, false) => vec![0..6],
-                (2, _) | (3, true) => vec![6..12],
-                (3, false) => vec![0..6, 6..12],
-                _ => vec![],
+            let expected: Vec<u32> = match (mask, own_sun) {
+                (1, false) => (0..6).collect(),
+                (2, _) | (3, true) => (6..12).collect(),
+                (3, false) => (0..12).collect(),
+                _ => Vec::new(),
             };
-            assert_eq!(celestial_ranges(8, false, own_sun, visibility), expected);
-            assert_eq!(celestial_ranges(12, true, own_sun, visibility), vec![0..18]);
-            assert!(celestial_ranges(0, false, own_sun, visibility).is_empty());
+            assert_eq!(
+                celestial_ranges(8, false, own_sun, visibility)
+                    .flatten()
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            let mut extra = expected;
+            extra.extend(12..18);
+            assert_eq!(
+                celestial_ranges(12, false, own_sun, visibility)
+                    .flatten()
+                    .collect::<Vec<_>>(),
+                extra
+            );
+            assert!(
+                celestial_ranges(12, true, own_sun, visibility)
+                    .flatten()
+                    .eq(0..18)
+            );
+            assert!(
+                celestial_ranges(0, false, own_sun, visibility)
+                    .flatten()
+                    .next()
+                    .is_none()
+            );
         }
     }
 }
