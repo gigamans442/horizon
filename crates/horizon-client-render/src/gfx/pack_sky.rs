@@ -327,7 +327,13 @@ impl PackSky {
     /// camera low, the void. `tilt` is the pack's `sunPathRotation` (degrees): the sun, moon
     /// and stars turn with it (7.1). In the End under the dragon fight's fog, only the End's fan,
     /// in the fog colour (`fogColor`), as stage SKY.
-    pub fn prepare(&self, queue: &wgpu::Queue, frame: &super::Frame, tilt: f32) -> Vec<Part> {
+    pub fn prepare(
+        &self,
+        queue: &wgpu::Queue,
+        frame: &super::Frame,
+        tilt: f32,
+        visibility: horizon_shaders::SkyVisibility,
+    ) -> Vec<Part> {
         let turn = super::pack_uniforms::tilt_matrix(tilt);
         let sun_angle = frame.sky.sun_angle.to_radians();
         // The fan turns to the other horizon in the afternoon (terrain.wgsl's sunrise_weight).
@@ -369,29 +375,7 @@ impl PackSky {
             })
             .collect();
         queue.write_buffer(&self.celestial, 0, bytemuck::cast_slice(&triangles));
-        let [sky, sunset, stars, void, fan] = self.ranges.clone();
-        let part = |stage, textured, range| Part {
-            stage,
-            textured,
-            range,
-        };
-        if end_fan {
-            return vec![part("SKY", false, fan)];
-        }
-        let mut parts = vec![part("SKY", false, sky)];
-        if frame.sky.sunrise_color[3] > 0.001 {
-            parts.push(part("SUNSET", false, sunset));
-        }
-        for (i, stage) in ["SUN", "MOON"].into_iter().enumerate().take(quads.len()) {
-            parts.push(part(stage, true, i as u32 * 6..i as u32 * 6 + 6));
-        }
-        if frame.stars.is_some() {
-            parts.push(part("STARS", false, stars));
-        }
-        if frame.dark_disc {
-            parts.push(part("VOID", false, void));
-        }
-        parts
+        parts(self.ranges.clone(), frame, quads.len(), visibility)
     }
 
     /// Binds the vertices of the `textured` (sun and moon) or other parts.
@@ -403,4 +387,69 @@ impl PackSky {
             pass.set_vertex_buffer(0, self.vertices.slice(..));
         }
     }
+}
+
+/// Keep the existing sunset, void and End fog fan behavior; the four requests select only
+/// their named geometry. The End fan returns before filtering.
+pub(super) fn parts(
+    ranges: [Range<u32>; 5],
+    frame: &super::Frame,
+    quads: usize,
+    visibility: horizon_shaders::SkyVisibility,
+) -> Vec<Part> {
+    let [sky, sunset, stars, void, fan] = ranges;
+    let part = |stage, textured, range| Part {
+        stage,
+        textured,
+        range,
+    };
+    if super::end_fog_sky(frame) {
+        return vec![part("SKY", false, fan)];
+    }
+    let mut parts = vec![part("SKY", false, sky)];
+    if frame.sky.sunrise_color[3] > 0.001 {
+        parts.push(part("SUNSET", false, sunset));
+    }
+    for (i, stage) in ["SUN", "MOON"].into_iter().enumerate().take(quads) {
+        parts.push(part(stage, true, i as u32 * 6..i as u32 * 6 + 6));
+    }
+    if frame.stars.is_some() {
+        parts.push(part("STARS", false, stars));
+    }
+    if frame.dark_disc {
+        parts.push(part("VOID", false, void));
+    }
+    parts.retain(|part| match part.stage {
+        "SKY" => visibility.sky,
+        "STARS" => visibility.stars,
+        "SUN" => visibility.sun,
+        "MOON" => visibility.moon,
+        _ => true,
+    });
+    parts
+}
+
+/// Native fallback quads use indices, while pack geometry uses triangle vertices. End
+/// flashes are not a sun or moon and retain the entire existing range.
+pub(super) fn celestial_ranges(
+    vertices: u32,
+    end_sky: bool,
+    own_sun: bool,
+    visibility: horizon_shaders::SkyVisibility,
+) -> Vec<Range<u32>> {
+    let end = vertices / 4 * 6;
+    if end_sky {
+        return vec![0..end];
+    }
+    let mut ranges = Vec::new();
+    if visibility.sun && !own_sun && end >= 6 {
+        ranges.push(0..6);
+    }
+    if visibility.moon && end >= 12 {
+        ranges.push(6..12);
+    }
+    if end > 12 {
+        ranges.push(12..end);
+    }
+    ranges
 }
