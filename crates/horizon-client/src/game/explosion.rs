@@ -1111,11 +1111,13 @@ impl Game<'_> {
     pub(super) fn explosion_kill_credit(&self) -> Option<super::commands::Target> {
         use super::commands::Target;
         // An explicit crystal or cart source names its own cause.
-        if let Some(Some(cause)) = &self.combat.explicit_explosion_cause {
-            return Some(if cause.player {
-                cause.guest.map_or(Target::Player, Target::Guest)
-            } else {
-                Target::Mob(cause.entity.0)
+        if let Some(cause) = &self.combat.explicit_explosion_cause {
+            return cause.as_ref().map(|cause| {
+                if cause.player {
+                    cause.guest.map_or(Target::Player, Target::Guest)
+                } else {
+                    Target::Mob(cause.entity.0)
+                }
             });
         }
         // A primed TNT's owner names the blast before any mob does; a mob's UUID
@@ -1326,18 +1328,6 @@ impl Game<'_> {
     ) -> Result<()> {
         if self.serving.is_some() || self.options.dedicated.is_some() {
             self.native_explosion_prime(center, radius);
-        }
-        if let Some(p) = &self.player {
-            let d = [
-                p.position.x - center[0],
-                p.position.y - center[1],
-                p.position.z - center[2],
-            ];
-            let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-            self.input_feedback(horizon_client::input_source::Feedback::Explosion {
-                distance,
-                radius,
-            });
         }
         // Explosion.explode: the blast is heard.
         let ctx = horizon_client::sculk::Context::default();
