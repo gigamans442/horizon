@@ -28,6 +28,9 @@ use super::pack_sky::PackSky;
 use super::pack_textures;
 use super::pack_uniforms::{self, FrameUniforms, PackInputs};
 
+mod blend_capability;
+#[cfg(test)]
+mod blend_capability_tests;
 mod packed;
 
 #[cfg(test)]
@@ -2336,6 +2339,10 @@ impl PackPost {
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<Self, Refused> {
         use std::sync::atomic::Ordering;
+        blend_capability::check(
+            post.per_buffer_blending_required,
+            adapter.get_downlevel_capabilities().flags,
+        )?;
         let spare = (post.clone(), world.clone());
         let (built, jobs) = Self::build(device, queue, adapter, post, screen, world, true, cancel)?;
         let refused = compile(device, &jobs, cancel);
