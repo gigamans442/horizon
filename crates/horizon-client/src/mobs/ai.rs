@@ -2828,9 +2828,10 @@ fn flower_contact_effects(m: &mut Mob, w: &MobWorld) {
     if !m.alive() {
         return;
     }
+    let inset = f64::from(1.0e-5_f32);
     let box_at_end = m
         .bounds_at(m.position)
-        .deflate(Vec3::new(1.0e-5, 1.0e-5, 1.0e-5));
+        .deflate(Vec3::new(inset, inset, inset));
     let _ = horizon_core::geometry::sweep_intersected_blocks(
         m.previous,
         m.position,
@@ -3446,7 +3447,7 @@ mod hit_effect_tests {
                     Vec3::new(0.5, 64.0, 0.5),
                     0.0,
                 );
-                let (mut lr, mut events) = (horizon_core::random::LegacyRandom::new(0), Vec::new());
+                let (mut lr, mut events) = (crate::mobs::world::level_random(0), Vec::new());
                 let mut cx = Cx {
                     w,
                     lr: &mut lr,
@@ -3505,7 +3506,7 @@ mod hit_effect_tests {
                 Vec3::new(0.5, 64.0, 0.5),
                 0.0,
             );
-            let (mut lr, mut events) = (horizon_core::random::LegacyRandom::new(0), Vec::new());
+            let (mut lr, mut events) = (crate::mobs::world::level_random(0), Vec::new());
             let mut cx = Cx {
                 w: &easy,
                 lr: &mut lr,
@@ -3554,7 +3555,7 @@ mod attack_sound_tests {
                 0.0,
             );
             m.silent = silent;
-            let (mut lr, mut events) = (horizon_core::random::LegacyRandom::new(0), Vec::new());
+            let (mut lr, mut events) = (crate::mobs::world::level_random(0), Vec::new());
             let mut cx = Cx {
                 w,
                 lr: &mut lr,
@@ -5315,7 +5316,7 @@ mod iron_golem_push_tests {
                     0.0,
                 );
                 m.extra.main_hand = hand.map(Arc::from);
-                let (mut lr, mut events) = (horizon_core::random::LegacyRandom::new(0), Vec::new());
+                let (mut lr, mut events) = (crate::mobs::world::level_random(0), Vec::new());
                 let mut cx = Cx {
                     w,
                     lr: &mut lr,
