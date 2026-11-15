@@ -1169,10 +1169,16 @@ fn load_shadow(
             let stages = p.program.iter().map(|q| &q.interface);
             stages.chain(p.compute.iter().map(|(_, c)| &c.interface))
         })
-        .flat_map(|i| &i.samplers)
-        .any(|s| {
-            SHADOW_SAMPLERS.contains(&s.name.as_str())
-                || config::shadow_color(&s.name).is_some_and(|n| n < loader.post.shadow_colors)
+        .any(|i| {
+            i.samplers.iter().any(|s| {
+                SHADOW_SAMPLERS.contains(&s.name.as_str())
+                    || config::shadow_color(&s.name).is_some_and(|n| n < loader.post.shadow_colors)
+            }) || i.images.iter().any(|image| {
+                matches!(
+                    image.before.as_deref().unwrap_or(&image.name),
+                    "shadowcolorimg0" | "shadowcolorimg1"
+                )
+            })
         });
     let forced = match loader.properties.get("shadow.enabled").map(str::trim) {
         Some("true") => Some(true),
@@ -3559,3 +3565,37 @@ mod buffer_blend_tests;
 
 #[cfg(test)]
 mod material_variant_tests;
+
+#[cfg(test)]
+mod shadow_image_demand_tests {
+    use super::*;
+
+    #[test]
+    fn shadow_images_request_shadow_buffers_without_a_sampler_and_respect_disable() {
+        for (name, demand) in [
+            ("shadowcolorimg0", true),
+            ("shadowcolorimg1", true),
+            ("colorimg0", false),
+            ("shadowcolorimg2", false),
+        ] {
+            for (properties, enabled) in [("", demand), ("shadow.enabled=false", false)] {
+                let shader = format!(
+                    "#version 430\nlayout(local_size_x=1) in;\nlayout(rgba8) writeonly uniform image2D {name};\nvoid main() {{ imageStore({name},ivec2(0),vec4(0.25)); }}"
+                );
+                let pack = Pack::from_zip_bytes(
+                    "original-shadow-demand",
+                    crate::pack::tests::zip(&[
+                        ("shaders/prepare.csh", &shader),
+                        ("shaders/shaders.properties", properties),
+                    ]),
+                )
+                .unwrap();
+                let mut macros = Macros::standard();
+                let (properties, _) = crate::read_properties(&pack, &mut macros);
+                let post = load_post(&pack, "", &properties, &macros, &Default::default());
+                assert_eq!(post.programs.len(), 1, "{name}: {:?}", post.notes);
+                assert_eq!(post.shadow_pass, enabled, "{name}: {:?}", post.notes);
+            }
+        }
+    }
+}
