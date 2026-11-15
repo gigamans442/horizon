@@ -3304,7 +3304,13 @@ impl PackPost {
         // cache key. Keep those shadowcomp dispatches live; direct-only packs retain caching.
         let shadow_cache_eligible = !shadow_comp.iter().any(|pass| {
             std::iter::once(pass).chain(&pass.compute).any(|p| {
-                matches!(p.pipeline, Pipeline::Compute { indirect: Some(_), .. })
+                matches!(
+                    p.pipeline,
+                    Pipeline::Compute {
+                        indirect: Some(_),
+                        ..
+                    }
+                )
             })
         });
         let built = Self {
