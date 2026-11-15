@@ -284,7 +284,7 @@ pub(super) fn no_ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) 
 }
 /// `Tadpole.aiStep`: growing up into a frog after 24000 ticks.
 fn grow_up(m: &mut Mob, events: &mut Vec<MobEvent>) {
-    if m.extra.age >= 0 && !m.extra.age_locked {
+    if !m.extra.age_locked {
         m.extra.age += 1;
         if m.extra.age >= 24_000 && !m.removed {
             m.removed = true;
@@ -1675,7 +1675,7 @@ mod pufferfish_sting_tests {
                 let mut fish = Mob::new(1, kind.clone(), Vec3::new(0.5, 64.0, 0.5), 0.0);
                 fish.no_gravity = true;
                 fish.ai.goals.add(1, PufferfishPuff);
-                let mut lr = horizon_core::random::LegacyRandom::new(0);
+                let mut lr = crate::mobs::world::level_random(0);
                 let mut events = Vec::new();
                 let mut cx = Cx {
                     w: &world,
