@@ -349,7 +349,7 @@ fn early_shadow_image_writes_survive_clear_order_and_cache_hits() {
         .enumerate()
         {
             if step == 2 {
-                frame.shadow_scene_revision += 1;
+                frame.shadow_scene_revision.0 += 1;
             }
             let got = gpu.render(&mut post, &color, &depth, &frame, &mut |_, _, _, _| {})[0];
             assert!(
