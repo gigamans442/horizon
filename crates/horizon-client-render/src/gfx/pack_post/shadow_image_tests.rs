@@ -46,7 +46,8 @@ fn coherence(format: &str, qualifier: &str, integer: bool) -> Post {
             "#version 430\nlayout(local_size_x=1) in;\nconst ivec3 workGroups=ivec3(4,4,1);\n{body}\n"
         )
     };
-    let decl = |n: usize| format!("layout({qualifier}) uniform {image} shadowcolorimg{n};\n");
+    let decl =
+        |n: usize| format!("layout({qualifier}) writeonly uniform {image} shadowcolorimg{n};\n");
     let scale = if integer { " / 8.0" } else { "" };
     let outputs = format!(
         "layout(location=0) out {vector} firstColor;\nlayout(location=1) out {vector} secondColor;\n"
@@ -66,11 +67,11 @@ fn coherence(format: &str, qualifier: &str, integer: bool) -> Post {
                 "#version 430\n/* RENDERTARGETS:0,1 */\n/* const int shadowcolor0Format={format};\nconst int shadowcolor1Format={format}; */\n{outputs}void main() {{ firstColor={first}; secondColor={second}; }}"
             ),
         ),
-        // Image loads and the sampler read the preceding draw; stores update the same sides.
+        // Samplers snapshot the preceding draw; image stores update the same current sides.
         (
             "shadowcomp1.csh",
             shader(format!(
-                "{}{}uniform {sampler} shadowcolor1;\nvoid main() {{ ivec2 p=ivec2(gl_GlobalInvocationID.xy); {vector} a=imageLoad(shadowcolorimg0,p); {vector} b=texelFetch(shadowcolor1,p,0); imageStore(shadowcolorimg0,p,a+{vector}({},0,0,0)); imageStore(shadowcolorimg1,p,b+{vector}(0,{},0,0)); }}",
+                "{}{}uniform {sampler} shadowcolor0;\nuniform {sampler} shadowcolor1;\nvoid main() {{ ivec2 p=ivec2(gl_GlobalInvocationID.xy); {vector} a=texelFetch(shadowcolor0,p,0); {vector} b=texelFetch(shadowcolor1,p,0); imageStore(shadowcolorimg0,p,a+{vector}({},0,0,0)); imageStore(shadowcolorimg1,p,b+{vector}(0,{},0,0)); }}",
                 decl(0),
                 decl(1),
                 value(2),
@@ -106,9 +107,8 @@ fn coherence(format: &str, qualifier: &str, integer: bool) -> Post {
         (
             "prepare.csh",
             shader(format!(
-                "{}void main() {{ ivec2 p=ivec2(gl_GlobalInvocationID.xy); {vector} a=imageLoad(shadowcolorimg0,p); imageStore(shadowcolorimg0,p,a+{vector}({},0,0,0)); }}",
-                decl(0),
-                value(1)
+                "{}layout({qualifier}) readonly uniform {image} shadowcolorimg1;\nvoid main() {{ ivec2 p=ivec2(gl_GlobalInvocationID.xy); {vector} a=imageLoad(shadowcolorimg1,p); imageStore(shadowcolorimg0,p,{vector}(a.g,0,0,1)); }}",
+                decl(0)
             )),
         ),
         ("composite.vsh", VERTEX.into()),
@@ -310,11 +310,11 @@ fn early_shadow_image_writes_survive_clear_order_and_cache_hits() {
     };
     for clear in [true, false] {
         let files = vec![
-            ("begin.csh".into(), "#version 430\nlayout(local_size_x=1) in;\nconst ivec3 workGroups=ivec3(1);\nlayout(rgba8) uniform image2D shadowcolorimg1;\nvoid main() { vec4 before=imageLoad(shadowcolorimg1,ivec2(0)); imageStore(shadowcolorimg1,ivec2(0),before+vec4(0.25,0,0,0)); }".into()),
+            ("begin.csh".into(), "#version 430\nlayout(local_size_x=1) in;\nconst ivec3 workGroups=ivec3(1);\nlayout(r32f) uniform image2D shadowcolorimg1;\nvoid main() { vec4 before=imageLoad(shadowcolorimg1,ivec2(0)); imageStore(shadowcolorimg1,ivec2(0),before+vec4(0.25,0,0,0)); }".into()),
             ("shadowcomp.vsh".into(), VERTEX.into()),
-            ("shadowcomp.fsh".into(), "#version 430\n/* RENDERTARGETS:0 */\nlayout(rgba8) readonly uniform image2D shadowcolorimg1;\nvoid main() { gl_FragData[0]=vec4(imageLoad(shadowcolorimg1,ivec2(0)).r,0,0,1); }".into()),
+            ("shadowcomp.fsh".into(), "#version 430\n/* RENDERTARGETS:0 */\nlayout(r32f) readonly uniform image2D shadowcolorimg1;\nvoid main() { gl_FragData[0]=vec4(imageLoad(shadowcolorimg1,ivec2(0)).r,0,0,1); }".into()),
             ("final.vsh".into(), VERTEX.into()),
-            ("final.fsh".into(), format!("#version 430\nconst int shadowMapResolution=4;\nconst bool shadowcolor1Clear={clear};\nconst vec4 shadowcolor1ClearColor=vec4(0);\nlayout(rgba8) readonly uniform image2D shadowcolorimg1;\nuniform sampler2D shadowcolor0;\nvoid main() {{ gl_FragColor=vec4(texelFetch(shadowcolor0,ivec2(0),0).r,imageLoad(shadowcolorimg1,ivec2(0)).r,0,1); }}")),
+            ("final.fsh".into(), format!("#version 430\nconst int shadowMapResolution=4;\nconst int shadowcolor1Format=R32F;\nconst bool shadowcolor1Clear={clear};\nconst vec4 shadowcolor1ClearColor=vec4(0);\nlayout(r32f) readonly uniform image2D shadowcolorimg1;\nuniform sampler2D shadowcolor0;\nvoid main() {{ gl_FragColor=vec4(texelFetch(shadowcolor0,ivec2(0),0).r,imageLoad(shadowcolorimg1,ivec2(0)).r,0,1); }}")),
         ];
         let color = gpu.texture(wgpu::TextureFormat::Rgba8Unorm);
         let depth = gpu.texture(wgpu::TextureFormat::Depth32Float);
