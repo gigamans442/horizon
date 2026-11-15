@@ -1,6 +1,6 @@
 //! Per-tick client visuals: the particle engine, `ClientLevel.animateTick`,
 //! campfire smoke and rain splashes (`ClientLevel.tickWeatherEffects`).
-use super::{Dim, Game};
+use super::Game;
 use horizon_client::assets::Properties;
 use horizon_client::camera::NearPlane;
 use horizon_client::fog::{
@@ -436,7 +436,9 @@ impl Game<'_> {
         let packed = self.world.light(b[0], b[1], b[2]);
         let sky = i32::from(packed >> 4) - self.sky_darken();
         let raw = sky.max(i32::from(packed & 15)).clamp(0, 15) as u8;
-        lightmap_brightness(if self.dim == Dim::Nether { 0.1 } else { 0.0 }, raw)
+        // `Lightmap.getBrightness`: the dimension type's `ambientLight` (0 in the
+        // overworld, 0.1 in the nether, 0.25 in the end).
+        lightmap_brightness(self.dimension_type().ambient_light, raw)
     }
     /// What `Minecraft` ticks outside the level's own tick: `GameRenderer.tick` runs the light
     /// flicker whenever the game is not paused, frozen or not, while `TextureManager.tick`
@@ -488,6 +490,13 @@ impl Game<'_> {
     }
 
     pub(super) fn tick_particles(&mut self) {
+        self.tick_particle_spawns();
+        self.tick_particle_engine();
+    }
+
+    /// The screen effects and fog, then what the level spawns around the camera
+    /// (`ClientLevel.animateTick`, rain splashes, campfire smoke).
+    pub(super) fn tick_particle_spawns(&mut self) {
         self.update_animation_inputs();
         let mut laps = horizon_client::spans::laps();
         let eye = self.eye_position();
@@ -675,6 +684,24 @@ impl Game<'_> {
             );
         }
         laps.lap("tp_rain_campfire");
+    }
+
+    /// A server's client's `ParticleEngine.tick`, while the level runs normally: in
+    /// `Minecraft.tick` it follows `ClientLevel.tickEntities`, so what the entities
+    /// spawned (the spark of a rocket boosting the moved player) is drawn from this
+    /// tick on, not the next (#16175).
+    pub(super) fn tick_remote_particle_engine(&mut self) {
+        if self.clock.runs_normally() {
+            self.tick_particle_engine();
+        }
+    }
+
+    /// `ParticleEngine.tick`: the live particles tick, then the ones added since
+    /// join them unticked.
+    fn tick_particle_engine(&mut self) {
+        let mut laps = horizon_client::spans::laps();
+        let world = &self.world;
+        let facts = self.res.facts();
         // SpellParticle.isCloseToScopingPlayer: the eye of a local player looking
         // through a spyglass in first person.
         let scope_eye = self
@@ -807,6 +834,9 @@ impl Game<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod end_light_tests;
 
 #[cfg(test)]
 mod tests {
