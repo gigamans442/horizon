@@ -79,7 +79,8 @@ fn pack(requirement: &str) -> Post {
     let inputs = horizon_shaders::GameInputs {
         terrain: Some(horizon_shaders::GbuffersInputs {
             declarations: "layout(location=0) in vec2 fixture_position;\n".into(),
-            body: "hz_Vertex=vec4(fixture_position,0.0,1.0);\n".into(),
+            // The near plane passes against any valid native depth in the reused fixture.
+            body: "hz_Vertex=vec4(fixture_position,-1.0,1.0);\n".into(),
             ..Default::default()
         }),
         ..Default::default()
