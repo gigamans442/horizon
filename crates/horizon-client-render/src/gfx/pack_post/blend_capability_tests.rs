@@ -27,6 +27,7 @@ fn pack(requirement: &str) -> Post {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let properties = format!(
         "iris.features.{requirement}=per_buffer_blending\n\
+         alphaTest.gbuffers_terrain=off\n\
          blend.gbuffers_terrain=SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ZERO\n\
          blend.gbuffers_terrain.colortex5=off\n\
          blend.gbuffers_terrain.colortex7=ZERO ONE ZERO ONE\n"
