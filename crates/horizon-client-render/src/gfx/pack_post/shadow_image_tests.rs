@@ -314,7 +314,7 @@ fn early_shadow_image_writes_survive_clear_order_and_cache_hits() {
             ("shadowcomp.vsh".into(), VERTEX.into()),
             ("shadowcomp.fsh".into(), "#version 430\n/* RENDERTARGETS:0 */\nlayout(r32f) readonly uniform image2D shadowcolorimg1;\nvoid main() { gl_FragData[0]=vec4(imageLoad(shadowcolorimg1,ivec2(0)).r,0,0,1); }".into()),
             ("final.vsh".into(), VERTEX.into()),
-            ("final.fsh".into(), format!("#version 430\nconst int shadowMapResolution=4;\nconst int shadowcolor1Format=R32F;\nconst bool shadowcolor1Clear={clear};\nconst vec4 shadowcolor1ClearColor=vec4(0);\nlayout(r32f) readonly uniform image2D shadowcolorimg1;\nuniform sampler2D shadowcolor0;\nvoid main() {{ gl_FragColor=vec4(texelFetch(shadowcolor0,ivec2(0),0).r,imageLoad(shadowcolorimg1,ivec2(0)).r,0,1); }}")),
+            ("final.fsh".into(), format!("#version 430\nconst int shadowMapResolution=4;\n/* const int shadowcolor1Format=R32F; */\nconst bool shadowcolor1Clear={clear};\nconst vec4 shadowcolor1ClearColor=vec4(0);\nlayout(r32f) readonly uniform image2D shadowcolorimg1;\nuniform sampler2D shadowcolor0;\nvoid main() {{ gl_FragColor=vec4(texelFetch(shadowcolor0,ivec2(0),0).r,imageLoad(shadowcolorimg1,ivec2(0)).r,0,1); }}")),
         ];
         let color = gpu.texture(wgpu::TextureFormat::Rgba8Unorm);
         let depth = gpu.texture(wgpu::TextureFormat::Depth32Float);
