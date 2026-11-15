@@ -48,10 +48,10 @@ pub(super) struct ShadowTargets {
     pub clears: [Option<[f32; 4]>; SHADOW_COLORS],
     /// Bit n set: B is shadowcolor n's "main".
     pub main: u16,
-    /// Nothing cleared yet this frame: the first pass into the shadow buffers clears them as it
-    /// begins (`clear_ops`), which saves a pass that loads and stores them all on tiled GPUs.
+    /// The depth/ordinary attachments have not begun this frame. Their first draw clears
+    /// them; storage-backed colours may have initialized before the early programs.
     fresh: bool,
-    /// Bit n set: shadowcolor n was cleared that way.
+    /// Bit n set: shadowcolor n needs no further frame clear.
     cleared: u8,
     /// Depth comparison for `sampler2DShadow` (hardware filtering): linear, as GL filters it.
     pub comparison: wgpu::Sampler,
@@ -241,8 +241,8 @@ impl ShadowTargets {
         }
     }
 
-    /// A new frame: the shadow map and the shadowcolor buffers cleared every frame (6.3) are
-    /// cleared by the first pass that begins (`clear_ops`), or else by `clear_rest`.
+    /// Starts frame state before setup/begin. Storage-backed colours follow their authored
+    /// clears here; other colours/depth stay deferred to the shadow draw or `clear_rest`.
     pub fn begin_frame(&mut self, encoder: &mut wgpu::CommandEncoder) {
         self.fresh = true;
         self.cleared = 0;

@@ -470,7 +470,7 @@ struct Pass {
     depth_linear: [f32; 4],
     /// Buffers sampled, for the bind group cache key.
     reads: u16,
-    /// Shadow colour buffers sampled or bound as images outside the shadow programs.
+    /// Buffers read through global shadow names, including storage images.
     shadow_reads: u16,
     /// Buffers written.
     written: u16,

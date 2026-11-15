@@ -94,6 +94,14 @@ fn coherence(format: &str, qualifier: &str, integer: bool) -> Post {
                 value(1)
             ),
         ),
+        ("shadowcomp3.vsh", VERTEX.into()),
+        // An odd number of buffer0 flips alternates its physical main side each frame.
+        (
+            "shadowcomp3.fsh",
+            format!(
+                "#version 430\n/* RENDERTARGETS:0 */\nuniform {sampler} shadowcolor0;\n{one_output}void main() {{ firstColor=texelFetch(shadowcolor0,ivec2(0),0); }}"
+            ),
+        ),
         // This runs after the render flip. A compute-only program must not flip again.
         (
             "prepare.csh",
@@ -131,8 +139,10 @@ fn shadow_images_follow_rendered_buffers_flips_and_ordered_storage_passes() {
         ("RGBA16F", "rgba16f", false),
         ("RGBA32UI", "rgba32ui", true),
     ] {
-        let mut post = gpu.build(coherence(format, qualifier, integer));
-        for size in [[4, 4], [8, 8]] {
+        let mut post = gpu
+            .try_build(coherence(format, qualifier, integer))
+            .expect("shadow image pack builds");
+        for size in [[4, 4], [4, 4], [8, 8]] {
             let pixels = gpu.render(&mut post, size);
             let got = pixels[0];
             assert!(
@@ -144,6 +154,13 @@ fn shadow_images_follow_rendered_buffers_flips_and_ordered_storage_passes() {
                 post.notes
             );
         }
+        assert!(
+            post.notes
+                .iter()
+                .all(|note| note.starts_with("shadow map ")),
+            "{:?}",
+            post.notes
+        );
         post.reset_history(&gpu.device);
         let got = gpu.render(&mut post, [4, 4])[0];
         assert!(
@@ -263,7 +280,7 @@ fn image_only_shadow_demand_uses_shadow_resolution_and_separate_color_buffers() 
                 ),
             ),
         ]);
-        let mut post = gpu.build(post);
+        let mut post = gpu.try_build(post).expect("image-only shadow pack builds");
         let got = gpu.render(&mut post, [8, 8])[0];
         assert!(
             got[0].abs_diff(64) <= 1
@@ -271,6 +288,13 @@ fn image_only_shadow_demand_uses_shadow_resolution_and_separate_color_buffers() 
                 && got[2].abs_diff(191) <= 1
                 && got[3] == 255,
             "shadowcolorimg{n}: {got:?}; {:?}",
+            post.notes
+        );
+        assert!(
+            post.notes
+                .iter()
+                .all(|note| note.starts_with("shadow map ")),
+            "{:?}",
             post.notes
         );
     }
