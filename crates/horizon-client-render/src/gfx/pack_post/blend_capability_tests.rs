@@ -2,11 +2,17 @@
 use super::destination_tests::Fixture;
 use super::*;
 use std::io::{Cursor, Write};
+use wgpu::util::DeviceExt;
 
 #[test]
 fn required_blending_refuses_only_when_independent_blend_is_missing() {
     use wgpu::DownlevelFlags as D;
-    for flags in [D::empty(), D::COMPUTE_SHADERS, D::INDEPENDENT_BLEND, D::all()] {
+    for flags in [
+        D::empty(),
+        D::COMPUTE_SHADERS,
+        D::INDEPENDENT_BLEND,
+        D::all(),
+    ] {
         assert!(blend_capability::check(false, flags).is_ok());
         let result = blend_capability::check(true, flags);
         assert_eq!(result.is_ok(), flags.contains(D::INDEPENDENT_BLEND));
@@ -29,9 +35,7 @@ fn pack(requirement: &str) -> Post {
         ("shaders.properties", properties.as_str()),
         (
             "gbuffers_terrain.vsh",
-            "#version 330 compatibility\nvoid main() {\n\
-             vec2 p=vec2(gl_VertexID==1 ? 3.0 : -1.0, gl_VertexID==2 ? 3.0 : -1.0);\n\
-             gl_Position=vec4(p,0.0,1.0);\n}\n",
+            "#version 120\nvoid main() { gl_Position=gl_Vertex; }\n",
         ),
         (
             "gbuffers_terrain.fsh",
@@ -73,7 +77,11 @@ fn pack(requirement: &str) -> Post {
     let (properties, notes) = horizon_shaders::read_properties(&pack, &mut macros);
     assert!(notes.is_empty(), "{notes:?}");
     let inputs = horizon_shaders::GameInputs {
-        terrain: Some(Default::default()),
+        terrain: Some(horizon_shaders::GbuffersInputs {
+            declarations: "layout(location=0) in vec2 fixture_position;\n".into(),
+            body: "hz_Vertex=vec4(fixture_position,0.0,1.0);\n".into(),
+            ..Default::default()
+        }),
         ..Default::default()
     };
     let post = horizon_shaders::load_post(&pack, "", &properties, &macros, &inputs);
@@ -98,9 +106,23 @@ fn required_blending_loads_on_capable_adapters_and_preserves_attachment_states()
         eprintln!("attachment pixel control skipped: adapter lacks independent blending");
         return;
     }
+    const ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x2];
+    let layouts = [Some(wgpu::VertexBufferLayout {
+        array_stride: 8,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &ATTRIBUTES,
+    })];
+    let positions = [[-1.0f32, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+    let vertices = gpu
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("original blend fixture triangle"),
+            contents: bytemuck::cast_slice(&positions),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
     for requirement in ["required", "optional"] {
         let geometry = Some(Geometry {
-            buffers: &[],
+            buffers: &layouts,
             table: None,
             depth_write: false,
             atlas: None,
@@ -110,16 +132,23 @@ fn required_blending_loads_on_capable_adapters_and_preserves_attachment_states()
         });
         let mut post = gpu.build_with_terrain(pack(requirement), geometry);
         assert!(post.terrain.is_some(), "{:?}", post.notes);
+        let mut draws = 0;
         let pixels = gpu.render_with_terrain(&mut post, [4, 4], &mut |pass, list, _, _| {
             if matches!(list, TerrainList::Solid) {
+                draws += 1;
+                pass.set_vertex_buffer(0, vertices.slice(..));
                 pass.draw(0..3, 0..1);
             }
         });
+        assert_eq!(draws, 1, "fixture must submit its solid triangle once");
         // colortex2 inherits program alpha blending, colortex5 disables blending,
         // and colortex7 keeps its destination through its own ZERO/ONE factors.
         for pixel in pixels {
             assert!(
-                pixel.iter().zip([128, 204, 51, 255]).all(|(got, want)| got.abs_diff(want) <= 1),
+                pixel
+                    .iter()
+                    .zip([128, 204, 51, 255])
+                    .all(|(got, want)| got.abs_diff(want) <= 1),
                 "{requirement}: {pixel:?}"
             );
         }
