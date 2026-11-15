@@ -7661,7 +7661,7 @@ impl Renderer {
                         continue;
                     }
                     let arrays: Vec<_> = arrays.iter().map(|pair| pair[kind].clone()).collect();
-                    atlases[kind].copy(&self.device, encoder, &arrays, layers.into_iter());
+                    atlases[kind].copy(&self.device, encoder, &arrays, layers);
                 }
             }
         }
