@@ -396,8 +396,9 @@ struct Globals {
     /// HDR output's tier windows, low to very bright: where the lift starts, where it is
     /// full (`hdr::Hdr::windows`); zero without HDR.
     hdr_windows: [[f32; 4]; 2],
+    /// x and y unused; z 1 with HDR output on; w the world's writers write light (terrain.wgsl).
     hdr_light: [f32; 4],
-    /// The scene's peak, HDR lighting's gain, world/look and debug; then the tiers' gains
+    /// The sun's disc's peak, an unused lane, world/look and debug; then the tiers' gains
     /// (`Hdr::draw_params`).
     hdr_settings: [f32; 4],
     hdr_gains: [f32; 4],
@@ -2540,7 +2541,7 @@ impl Renderer {
         previous: Option<&Self>,
         api: GraphicsApi,
         translucent_batching: bool,
-        shader_pack: bool,
+        (shader_pack, pack_starts_wide): (bool, bool),
         // The settings and the pack's `request` pick the frame (`output::resolve_frame`),
         // with what this window's display reported to the renderer before (`display`).
         settings: &crate::graphics::Graphics,
@@ -4639,7 +4640,7 @@ impl Renderer {
         };
         // The solid quads in the compact layout where every pass reads it; the first world
         // frames settle it for the picked pack (`follow_packed_layout`).
-        let packed_quads = flat.is_some() && !shader_pack && packed_wanted();
+        let packed_quads = flat.is_some() && !pack_starts_wide && packed_wanted();
         packed::pack_quads(packed_quads);
         // A native mod's world warp builds its pipelines with these layouts once it is given one.
         let world_warps = world_warp::WorldWarps::new(world_warp::Kit {
@@ -4697,9 +4698,8 @@ impl Renderer {
         // first world frame (`shader_pack`: the picked pack draws flat, a `shaders/`
         // pack or one of Horizon's own with `[shadow]`), and the frames before it, the
         // level loading screen's among them, keep the layout the sections upload in
-        // (`draw_frame`). It starts as that pack's, a `shaders/` pack taken to draw
-        // terrain: the pack loading keeps it, and only one whose terrain and shadow
-        // pass draw none meshes the sections again.
+        // (`draw_frame`). It starts as that pack's (`pack_starts_wide`: a `shaders/` pack
+        // taken to draw terrain, or one with `[displacement]`), so the pack loading keeps it.
         let (sorted_indices, translucent_arena) = arena::Arena::translucent_arenas(
             &device,
             std::mem::size_of::<TerrainVertex>() as u64,
@@ -5085,7 +5085,7 @@ impl Renderer {
             pass.draw_indexed(0..quads * 6, (first * 4) as i32, 0..1);
         }
     }
-    /// HDR lighting on the clouds just drawn: the sky's value (`fs_hdr_cloud_mark`).
+    /// Unmarks the clouds just drawn (`fs_hdr_cloud_mark`).
     fn mark_clouds(&self, pass: &mut wgpu::RenderPass<'_>, quads: u32) {
         if !light_marks(self.output.frame.format, self.hdr.is_some())
             || self.hdr.as_ref().is_none_or(|h| !h.lighting)
@@ -5100,7 +5100,7 @@ impl Renderer {
         pass.draw_indexed(0..quads * 6, 0, 0..1);
         pass.set_bind_group(0, &self.group, &[]);
     }
-    /// HDR lighting on translucent terrain, over the draws that just blended it.
+    /// Unmarks translucent terrain, over the draws that just blended it (`fs_translucent_mark`).
     fn mark_translucent_terrain(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
@@ -8159,13 +8159,8 @@ impl Renderer {
             ],
             hdr_windows: self.hdr.as_ref().map_or([[0.0; 4]; 2], hdr::Hdr::windows),
             hdr_light: [
-                frame.sky.sky_light_factor,
-                // The underwater overlay: the sky and fog are the water's own colour there.
-                if frame.screen.iter().any(|q| q.world_tint) {
-                    0.0
-                } else {
-                    frame.sky.sky_light_factor
-                },
+                0.0,
+                0.0,
                 // Only HDR output reads the solid terrain's lighting alpha.
                 if self.hdr.is_some() { 1.0 } else { 0.0 },
                 f32::from(u8::from(hdr_gain)),
@@ -9944,7 +9939,7 @@ impl Renderer {
                 pass.set_pipeline(&shadow.solid);
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.set_vertex_buffer(1, self.instances.slice(..));
-                self.draw_sections(&mut pass, &self.indirect, 0, shadow_first, shadow_solid);
+                self.draw_solid_sections(&mut pass, &self.indirect, 0, shadow_first, shadow_solid);
             }
             // `[displacement]`'s grid casts in place of the flat quads it took over.
             if let Some((d, picks, pipeline)) = native
@@ -10093,12 +10088,7 @@ impl Renderer {
                     view_proj: mirror_view_projection(view_proj, plane).to_cols_array_2d(),
                     inverse_view,
                     fog_ends,
-                    hdr_light: [
-                        globals.hdr_light[0],
-                        globals.hdr_light[1],
-                        globals.hdr_light[2],
-                        0.0,
-                    ],
+                    hdr_light: [0.0, 0.0, globals.hdr_light[2], 0.0],
                     ..globals
                 };
                 self.uploads.buffer(
@@ -10542,9 +10532,8 @@ impl Renderer {
                         ],
                         _ => &[(solid_pipeline, 0..phase1_draws, phase1_draws..solid_draws)],
                     };
-                    // The vanilla solid pipelines read the page themselves; a native
-                    // material's take it as vertices.
-                    let pulled = material.is_none() && self.flat.is_some();
+                    // The solid pipelines, a native material's too, read the page themselves.
+                    let pulled = self.flat.is_some();
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                     pass.set_vertex_buffer(1, self.instances.slice(..));
                     pass.stage(self.own_timing.as_mut(), "solid terrain");
