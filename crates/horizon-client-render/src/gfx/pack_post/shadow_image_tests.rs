@@ -336,7 +336,13 @@ fn early_shadow_image_writes_survive_clear_order_and_cache_hits() {
             },
             Default::default(),
         );
-        let hud = HudBatch::new(SIZE);
+        let hud = HudBatch::new(
+            SIZE,
+            crate::hud::GuiScale {
+                requested: 0,
+                unicode: false,
+            },
+        );
         let mut frame = fixture_frame(&hud);
         frame.title = false;
         frame.shadow_cache = true;
